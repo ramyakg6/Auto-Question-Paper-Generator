@@ -93,6 +93,239 @@ class LoginWindow:
             messagebox.showerror("Login Failed", "Invalid username or password.")
 
 
+# ─── EDIT QUESTION POPUP ─────────────────────────────────────
+class EditQuestionDialog:
+    """Popup dialog to edit an existing question."""
+    def __init__(self, parent, question_data, on_save_callback):
+        self.on_save = on_save_callback
+        self.q = question_data
+
+        self.win = tk.Toplevel(parent)
+        self.win.title("Edit Question")
+        self.win.geometry("700x560")
+        self.win.configure(bg=BG)
+        self.win.grab_set()  # Modal
+        self.build_ui()
+
+    def build_ui(self):
+        tk.Label(self.win, text="Edit Question", font=FONT_TITLE, bg=BG, fg=PRIMARY).pack(pady=(15, 5), padx=20, anchor="w")
+        ttk.Separator(self.win, orient="horizontal").pack(fill="x", padx=20, pady=5)
+
+        form = tk.Frame(self.win, bg=WHITE, padx=20, pady=15)
+        form.pack(fill="both", expand=True, padx=20, pady=5)
+        form.columnconfigure(1, weight=1)
+
+        # Question text
+        tk.Label(form, text="Question Text", font=FONT_BOLD, bg=WHITE).grid(row=0, column=0, sticky="nw", pady=6, padx=(0,10))
+        self.q_text = tk.Text(form, font=FONT, bg=LIGHT, relief="flat", height=3, wrap="word")
+        self.q_text.grid(row=0, column=1, columnspan=3, sticky="ew", pady=6, ipady=4)
+        self.q_text.insert("1.0", self.q.get("question_text", ""))
+
+        # Type, Difficulty, Marks
+        tk.Label(form, text="Type", font=FONT_BOLD, bg=WHITE).grid(row=1, column=0, sticky="w", pady=6, padx=(0,10))
+        self.type_var = tk.StringVar(value=self.q.get("question_type", "MCQ"))
+        ttk.Combobox(form, textvariable=self.type_var, values=["MCQ", "Short", "Long"],
+                     state="readonly", font=FONT, width=10).grid(row=1, column=1, sticky="w", pady=6)
+
+        tk.Label(form, text="Difficulty", font=FONT_BOLD, bg=WHITE).grid(row=1, column=2, sticky="w", padx=(15,10))
+        self.diff_var = tk.StringVar(value=self.q.get("difficulty", "Medium"))
+        ttk.Combobox(form, textvariable=self.diff_var, values=["Easy", "Medium", "Hard"],
+                     state="readonly", font=FONT, width=10).grid(row=1, column=3, sticky="w", pady=6)
+
+        tk.Label(form, text="Marks", font=FONT_BOLD, bg=WHITE).grid(row=2, column=0, sticky="w", pady=6, padx=(0,10))
+        self.marks_var = tk.IntVar(value=self.q.get("marks", 1))
+        tk.Spinbox(form, from_=1, to=20, textvariable=self.marks_var,
+                   font=FONT, bg=LIGHT, relief="flat", width=8).grid(row=2, column=1, sticky="w", pady=6)
+
+        # MCQ Options
+        tk.Label(form, text="Option A", font=FONT_BOLD, bg=WHITE).grid(row=3, column=0, sticky="w", pady=4, padx=(0,10))
+        self.opt_a = tk.StringVar(value=self.q.get("option_a") or "")
+        tk.Entry(form, textvariable=self.opt_a, font=FONT, bg=LIGHT, relief="flat").grid(
+            row=3, column=1, columnspan=3, sticky="ew", pady=4, ipady=4)
+
+        tk.Label(form, text="Option B", font=FONT_BOLD, bg=WHITE).grid(row=4, column=0, sticky="w", pady=4, padx=(0,10))
+        self.opt_b = tk.StringVar(value=self.q.get("option_b") or "")
+        tk.Entry(form, textvariable=self.opt_b, font=FONT, bg=LIGHT, relief="flat").grid(
+            row=4, column=1, columnspan=3, sticky="ew", pady=4, ipady=4)
+
+        tk.Label(form, text="Option C", font=FONT_BOLD, bg=WHITE).grid(row=5, column=0, sticky="w", pady=4, padx=(0,10))
+        self.opt_c = tk.StringVar(value=self.q.get("option_c") or "")
+        tk.Entry(form, textvariable=self.opt_c, font=FONT, bg=LIGHT, relief="flat").grid(
+            row=5, column=1, columnspan=3, sticky="ew", pady=4, ipady=4)
+
+        tk.Label(form, text="Option D", font=FONT_BOLD, bg=WHITE).grid(row=6, column=0, sticky="w", pady=4, padx=(0,10))
+        self.opt_d = tk.StringVar(value=self.q.get("option_d") or "")
+        tk.Entry(form, textvariable=self.opt_d, font=FONT, bg=LIGHT, relief="flat").grid(
+            row=6, column=1, columnspan=3, sticky="ew", pady=4, ipady=4)
+
+        tk.Label(form, text="Answer", font=FONT_BOLD, bg=WHITE).grid(row=7, column=0, sticky="w", pady=4, padx=(0,10))
+        self.answer_var = tk.StringVar(value=self.q.get("answer") or "")
+        tk.Entry(form, textvariable=self.answer_var, font=FONT, bg=LIGHT, relief="flat", width=10).grid(
+            row=7, column=1, sticky="w", pady=4, ipady=4)
+        tk.Label(form, text="(A/B/C/D for MCQ)", font=("Segoe UI", 9), bg=WHITE, fg="#999").grid(
+            row=7, column=2, sticky="w", padx=5)
+
+        # Buttons
+        btn_frame = tk.Frame(self.win, bg=BG)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="💾  Save Changes", font=FONT_BOLD, bg=SUCCESS, fg=WHITE,
+                  relief="flat", padx=20, pady=8, cursor="hand2",
+                  command=self.save).pack(side="left", padx=10)
+        tk.Button(btn_frame, text="Cancel", font=FONT, bg="#95a5a6", fg=WHITE,
+                  relief="flat", padx=20, pady=8, cursor="hand2",
+                  command=self.win.destroy).pack(side="left", padx=10)
+
+    def save(self):
+        q_text = self.q_text.get("1.0", "end").strip()
+        if not q_text:
+            messagebox.showerror("Error", "Question text cannot be empty.", parent=self.win)
+            return
+
+        updated = {
+            "id": self.q["id"],
+            "question_text": q_text,
+            "question_type": self.type_var.get(),
+            "difficulty": self.diff_var.get(),
+            "marks": self.marks_var.get(),
+            "option_a": self.opt_a.get().strip() or None,
+            "option_b": self.opt_b.get().strip() or None,
+            "option_c": self.opt_c.get().strip() or None,
+            "option_d": self.opt_d.get().strip() or None,
+            "answer": self.answer_var.get().strip() or None,
+        }
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE questions SET question_text=?, question_type=?, difficulty=?,
+            marks=?, option_a=?, option_b=?, option_c=?, option_d=?, answer=?
+            WHERE id=?
+        ''', (updated["question_text"], updated["question_type"], updated["difficulty"],
+              updated["marks"], updated["option_a"], updated["option_b"],
+              updated["option_c"], updated["option_d"], updated["answer"], updated["id"]))
+        conn.commit()
+        conn.close()
+
+        messagebox.showinfo("Saved", "Question updated successfully!", parent=self.win)
+        self.win.destroy()
+        self.on_save()
+
+
+# ─── PREVIEW WINDOW ──────────────────────────────────────────
+class PreviewWindow:
+    """Shows selected questions before generating PDF. Allows proceeding or cancelling."""
+    def __init__(self, parent, questions, config, on_confirm_callback):
+        self.parent = parent
+        self.questions = questions
+        self.config = config
+        self.on_confirm = on_confirm_callback
+
+        self.win = tk.Toplevel(parent)
+        self.win.title("Preview — Question Paper")
+        self.win.geometry("820x620")
+        self.win.configure(bg=BG)
+        self.win.grab_set()
+        self.build_ui()
+
+    def build_ui(self):
+        # Header
+        header = tk.Frame(self.win, bg=PRIMARY, padx=20, pady=12)
+        header.pack(fill="x")
+        tk.Label(header, text="📋 Question Paper Preview", font=FONT_TITLE, bg=PRIMARY, fg=WHITE).pack(side="left")
+        total = sum(q['marks'] for q in self.questions)
+        tk.Label(header, text=f"Total: {len(self.questions)} Qs | {total} Marks",
+                 font=FONT_BOLD, bg=PRIMARY, fg="#aaaacc").pack(side="right")
+
+        # Summary bar
+        summary = tk.Frame(self.win, bg=LIGHT, padx=20, pady=8)
+        summary.pack(fill="x")
+        mcq   = len([q for q in self.questions if q['question_type'] == 'MCQ'])
+        short = len([q for q in self.questions if q['question_type'] == 'Short'])
+        long  = len([q for q in self.questions if q['question_type'] == 'Long'])
+        tk.Label(summary, text=f"Subject: {self.config['subject']}   |   "
+                               f"MCQ: {mcq}   Short: {short}   Long: {long}   |   "
+                               f"Exam: {self.config['exam_type']}   Duration: {self.config['duration']} min",
+                 font=FONT, bg=LIGHT, fg=PRIMARY).pack(anchor="w")
+
+        # Question list
+        list_frame = tk.Frame(self.win, bg=BG)
+        list_frame.pack(fill="both", expand=True, padx=15, pady=10)
+
+        canvas = tk.Canvas(list_frame, bg=BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        self.scroll_frame = tk.Frame(canvas, bg=BG)
+        self.scroll_frame.bind("<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        sections = [("SECTION A — MCQ", "MCQ"), ("SECTION B — Short Answer", "Short"), ("SECTION C — Long Answer", "Long")]
+        for section_title, q_type in sections:
+            qs = [q for q in self.questions if q['question_type'] == q_type]
+            if not qs:
+                continue
+            tk.Label(self.scroll_frame, text=section_title, font=FONT_BOLD,
+                     bg=PRIMARY, fg=WHITE, padx=10, pady=5).pack(fill="x", pady=(10, 3))
+            for i, q in enumerate(qs, 1):
+                q_frame = tk.Frame(self.scroll_frame, bg=WHITE, padx=12, pady=8)
+                q_frame.pack(fill="x", pady=2)
+                header_row = tk.Frame(q_frame, bg=WHITE)
+                header_row.pack(fill="x")
+                tk.Label(header_row, text=f"Q{i}. {q['question_text']}", font=FONT,
+                         bg=WHITE, anchor="w", wraplength=560, justify="left").pack(side="left", fill="x", expand=True)
+                tk.Label(header_row, text=f"[{q['marks']} mark{'s' if q['marks']>1 else ''}]",
+                         font=("Segoe UI", 9, "italic"), bg=WHITE, fg=ACCENT).pack(side="right", padx=(5,0))
+                tk.Button(header_row, text="✏️", font=("Segoe UI", 9), bg=LIGHT,
+                          relief="flat", cursor="hand2", padx=4,
+                          command=lambda qdata=q: self.edit_question_in_preview(qdata)).pack(side="right")
+                if q_type == "MCQ":
+                    opts = tk.Frame(q_frame, bg=WHITE)
+                    opts.pack(fill="x", padx=15, pady=2)
+                    for label, key in [("A", "option_a"), ("B", "option_b"), ("C", "option_c"), ("D", "option_d")]:
+                        val = q.get(key)
+                        if val:
+                            tk.Label(opts, text=f"({label}) {val}", font=("Segoe UI", 9),
+                                     bg=WHITE, fg="#555", anchor="w").pack(anchor="w")
+
+        # Bottom buttons
+        btn_frame = tk.Frame(self.win, bg=BG, pady=12)
+        btn_frame.pack(fill="x", padx=20)
+        tk.Button(btn_frame, text="✅  Generate PDF", font=FONT_BOLD, bg=SUCCESS, fg=WHITE,
+                  relief="flat", padx=25, pady=10, cursor="hand2",
+                  command=self.confirm).pack(side="right", padx=5)
+        tk.Button(btn_frame, text="✖  Cancel", font=FONT, bg="#95a5a6", fg=WHITE,
+                  relief="flat", padx=20, pady=10, cursor="hand2",
+                  command=self.win.destroy).pack(side="right", padx=5)
+
+    def edit_question_in_preview(self, q_data):
+        """Open edit dialog from preview; refresh preview after saving."""
+        def on_save_refresh():
+            # Reload the updated question from DB and update in self.questions list
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM questions WHERE id=?", (q_data["id"],))
+            row = cursor.fetchone()
+            columns = [desc[0] for desc in cursor.description]
+            conn.close()
+            if row:
+                updated = dict(zip(columns, row))
+                for idx, q in enumerate(self.questions):
+                    if q["id"] == updated["id"]:
+                        self.questions[idx] = updated
+                        break
+            # Rebuild preview content
+            self.win.destroy()
+            PreviewWindow(self.parent, self.questions, self.config, self.on_confirm)
+
+        EditQuestionDialog(self.win, q_data, on_save_refresh)
+
+    def confirm(self):
+        self.win.destroy()
+        self.on_confirm(self.questions, self.config)
+
+
 # ─── MAIN APP ────────────────────────────────────────────────
 class MainApp:
     def __init__(self, root, user, assistant):
@@ -107,7 +340,6 @@ class MainApp:
         self.assistant.speak("Dashboard loaded. You can navigate using the sidebar or use voice commands.")
 
     def build_ui(self):
-        # Sidebar
         sidebar = tk.Frame(self.root, bg=PRIMARY, width=210)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
@@ -133,7 +365,6 @@ class MainApp:
 
         ttk.Separator(sidebar, orient="horizontal").pack(fill="x", padx=10, pady=5)
 
-        # Voice controls in sidebar
         tk.Label(sidebar, text="🎙 Voice Assistant", font=("Segoe UI", 9, "bold"),
                  bg=PRIMARY, fg="#aaaacc").pack(pady=(5, 3))
 
@@ -149,6 +380,12 @@ class MainApp:
                                   command=self.toggle_mute)
         self.mute_btn.pack(fill="x", padx=10, pady=2)
 
+        # FIX 1: Visual command status bar
+        self.voice_status_label = tk.Label(sidebar, text="🎙 Ready",
+                                           font=("Segoe UI", 8), bg=PRIMARY,
+                                           fg="#aaaacc", wraplength=180, justify="center")
+        self.voice_status_label.pack(fill="x", padx=8, pady=(4, 0))
+
         tk.Button(sidebar, text="🚪  Logout", font=("Segoe UI", 10),
                   bg="#c0392b", fg=WHITE, relief="flat", anchor="w",
                   padx=15, pady=12, cursor="hand2",
@@ -156,6 +393,9 @@ class MainApp:
 
         self.content = tk.Frame(self.root, bg=BG)
         self.content.pack(side="left", fill="both", expand=True)
+
+        # FIX 1: Register visual feedback callback
+        self.assistant.set_command_callback(self._update_voice_status)
         self.show_generate()
 
     # ── VOICE CONTROLS ───────────────────────────────────────
@@ -165,7 +405,7 @@ class MainApp:
             self.voice_btn.config(text="🔴 Stop Listening", bg="#e74c3c")
             self.listener = VoiceCommandListener(self.assistant, self.handle_voice_command)
             self.listener.start_listening()
-            self.assistant.speak("Voice commands activated. Say generate paper, AI generate, question bank, history, or logout.")
+            self.assistant.speak("Voice commands activated.")
         else:
             self.voice_listening = False
             self.voice_btn.config(text="🎙 Start Listening", bg="#27ae60")
@@ -180,8 +420,16 @@ class MainApp:
         else:
             self.mute_btn.config(text="🔇 Unmuted", bg="#e74c3c")
 
+    def _update_voice_status(self, text):
+        """FIX 1: Update visual voice status label in sidebar."""
+        try:
+            self.root.after(0, lambda: self.voice_status_label.config(text=text))
+            # Auto-clear after 4 seconds
+            self.root.after(4000, lambda: self.voice_status_label.config(text="🎙 Ready"))
+        except:
+            pass
+
     def handle_voice_command(self, action):
-        """Handle voice commands from listener."""
         self.root.after(0, lambda: self._execute_command(action))
 
     def _execute_command(self, action):
@@ -207,11 +455,24 @@ class MainApp:
         elif action == "voice_stop":
             self.toggle_listening()
         elif action == "voice_mute":
-            if self.assistant.enabled:
-                self.toggle_mute()
+            if self.assistant.enabled: self.toggle_mute()
         elif action == "voice_unmute":
-            if not self.assistant.enabled:
-                self.toggle_mute()
+            if not self.assistant.enabled: self.toggle_mute()
+        elif action == "action_preview":
+            # FIX 2: trigger preview if on generate screen
+            self.assistant.speak("Showing preview.")
+            try: self.generate_paper()
+            except: self.assistant.speak("Please go to the Generate Paper screen first.")
+        elif action == "action_clear":
+            # FIX 2: clear current screen and reload
+            self.assistant.speak("Screen cleared.")
+            self.show_generate()
+        elif action == "action_help":
+            # FIX 2: read out available commands
+            self.assistant.speak(
+                "Available commands: generate paper, A I generate, question bank, "
+                "show history, preview, clear, mute, unmute, logout, stop listening."
+            )
 
     def clear_content(self):
         for w in self.content.winfo_children():
@@ -322,7 +583,7 @@ class MainApp:
             filetypes=[("Supported Files", "*.pdf *.txt *.docx"), ("All Files", "*.*")])
         if path:
             self.file_path_var.set(path)
-            self.assistant.speak(f"File selected. Ready to generate questions.")
+            self.assistant.speak("File selected. Ready to generate questions.")
 
     def run_ai_generation(self):
         api_key = self.api_key_var.get().strip()
@@ -330,7 +591,6 @@ class MainApp:
         subject = self.ai_subject_var.get().strip()
         unit = self.ai_unit_var.get().strip()
 
-        # API key is optional — offline mode used if empty
         if file_path == "No file selected" or not os.path.exists(file_path):
             self.assistant.speak("Please select a valid topic file.")
             messagebox.showerror("Error", "Please select a valid topic file.")
@@ -357,7 +617,7 @@ class MainApp:
                     def err():
                         self.ai_status.config(text="❌ Could not extract text. Try a TXT file.", fg="#e74c3c")
                         self.ai_gen_btn.config(state="normal")
-                        self.assistant.speak("Could not extract text from file. Please try a text file.")
+                        self.assistant.speak("Could not extract text from file.")
                     self.root.after(0, err)
                     return
 
@@ -382,7 +642,7 @@ class MainApp:
                     try:
                         self.ai_status.config(text=f"✅ {s} questions generated and saved!", fg=SUCCESS)
                         self.ai_gen_btn.config(state="normal")
-                        self.assistant.speak(f"Success! {s} questions have been generated based on your topic and saved to the question bank.")
+                        self.assistant.speak(f"Success! {s} questions saved to the question bank.")
                         messagebox.showinfo("Success", f"✅ {s} questions generated!\n\nGo to Generate Paper to create your exam paper.")
                     except Exception: pass
                 self.root.after(0, on_success)
@@ -392,7 +652,7 @@ class MainApp:
                     try:
                         self.ai_status.config(text=f"❌ Error: {err}", fg="#e74c3c")
                         self.ai_gen_btn.config(state="normal")
-                        self.assistant.speak(f"An error occurred. {err}")
+                        self.assistant.speak(f"An error occurred.")
                     except Exception: pass
                 self.root.after(0, on_error)
 
@@ -402,7 +662,7 @@ class MainApp:
     def show_generate(self):
         self.clear_content()
         self.page_title("Generate Question Paper", "Configure and auto-generate a balanced exam paper")
-        self.assistant.speak("Generate Paper screen. Select subject, configure settings, then click Generate Question Paper.")
+        self.assistant.speak("Generate Paper screen. Configure settings then click Generate Question Paper.")
 
         scroll_frame = tk.Frame(self.content, bg=BG)
         scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
@@ -453,34 +713,71 @@ class MainApp:
         tk.Spinbox(fields_frame, from_=30, to=300, textvariable=self.duration_var,
                    font=FONT, bg=LIGHT, relief="flat", width=10).grid(row=2, column=3, sticky="w", pady=6)
 
-        tk.Label(fields_frame, text="MCQ Count", font=FONT_BOLD, bg=WHITE).grid(row=3, column=0, sticky="w", pady=6, padx=(0, 10))
+        # ── FIX 1: Marks per question type ──────────────────
+        marks_frame = tk.Frame(scroll_frame, bg=WHITE, padx=20, pady=15)
+        marks_frame.pack(fill="x", pady=5)
+        tk.Label(marks_frame, text="Question Counts & Marks per Question",
+                 font=FONT_BOLD, bg=WHITE).grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, 8))
+
+        tk.Label(marks_frame, text="MCQ Count", font=FONT, bg=WHITE).grid(row=1, column=0, sticky="w", padx=(0, 5))
         self.mcq_count_var = tk.IntVar(value=10)
-        tk.Spinbox(fields_frame, from_=0, to=50, textvariable=self.mcq_count_var,
-                   font=FONT, bg=LIGHT, relief="flat", width=10).grid(row=3, column=1, sticky="w", pady=6)
+        tk.Spinbox(marks_frame, from_=0, to=50, textvariable=self.mcq_count_var,
+                   font=FONT, bg=LIGHT, relief="flat", width=6).grid(row=1, column=1, padx=5)
+        tk.Label(marks_frame, text="Marks each", font=("Segoe UI", 9), bg=WHITE, fg="#666").grid(row=1, column=2, sticky="w")
+        self.mcq_marks_var = tk.IntVar(value=1)
+        tk.Spinbox(marks_frame, from_=1, to=10, textvariable=self.mcq_marks_var,
+                   font=FONT, bg=LIGHT, relief="flat", width=5).grid(row=1, column=3, padx=5)
 
-        tk.Label(fields_frame, text="Short Ans Count", font=FONT_BOLD, bg=WHITE).grid(row=3, column=2, sticky="w", pady=6, padx=(0, 10))
+        tk.Label(marks_frame, text="Short Count", font=FONT, bg=WHITE).grid(row=2, column=0, sticky="w", padx=(0, 5), pady=6)
         self.short_count_var = tk.IntVar(value=5)
-        tk.Spinbox(fields_frame, from_=0, to=30, textvariable=self.short_count_var,
-                   font=FONT, bg=LIGHT, relief="flat", width=10).grid(row=3, column=3, sticky="w", pady=6)
+        tk.Spinbox(marks_frame, from_=0, to=30, textvariable=self.short_count_var,
+                   font=FONT, bg=LIGHT, relief="flat", width=6).grid(row=2, column=1, padx=5)
+        tk.Label(marks_frame, text="Marks each", font=("Segoe UI", 9), bg=WHITE, fg="#666").grid(row=2, column=2, sticky="w")
+        self.short_marks_var = tk.IntVar(value=4)
+        tk.Spinbox(marks_frame, from_=1, to=20, textvariable=self.short_marks_var,
+                   font=FONT, bg=LIGHT, relief="flat", width=5).grid(row=2, column=3, padx=5)
 
-        tk.Label(fields_frame, text="Long Ans Count", font=FONT_BOLD, bg=WHITE).grid(row=4, column=0, sticky="w", pady=6, padx=(0, 10))
+        tk.Label(marks_frame, text="Long Count", font=FONT, bg=WHITE).grid(row=3, column=0, sticky="w", padx=(0, 5))
         self.long_count_var = tk.IntVar(value=2)
-        tk.Spinbox(fields_frame, from_=0, to=10, textvariable=self.long_count_var,
-                   font=FONT, bg=LIGHT, relief="flat", width=10).grid(row=4, column=1, sticky="w", pady=6)
+        tk.Spinbox(marks_frame, from_=0, to=10, textvariable=self.long_count_var,
+                   font=FONT, bg=LIGHT, relief="flat", width=6).grid(row=3, column=1, padx=5)
+        tk.Label(marks_frame, text="Marks each", font=("Segoe UI", 9), bg=WHITE, fg="#666").grid(row=3, column=2, sticky="w")
+        self.long_marks_var = tk.IntVar(value=10)
+        tk.Spinbox(marks_frame, from_=1, to=30, textvariable=self.long_marks_var,
+                   font=FONT, bg=LIGHT, relief="flat", width=5).grid(row=3, column=3, padx=5)
 
-        tk.Label(fields_frame, text="Difficulty Ratio", font=FONT_BOLD, bg=WHITE).grid(row=4, column=2, sticky="w", pady=6, padx=(0, 10))
-        ratio_frame = tk.Frame(fields_frame, bg=WHITE)
-        ratio_frame.grid(row=4, column=3, sticky="w", pady=6)
-        tk.Label(ratio_frame, text="Easy%", font=FONT, bg=WHITE).pack(side="left")
+        # Live total marks preview
+        self.calc_label = tk.Label(marks_frame, text="", font=FONT_BOLD, bg=WHITE, fg=ACCENT)
+        self.calc_label.grid(row=4, column=0, columnspan=6, sticky="w", pady=(8, 0))
+
+        def update_calc(*args):
+            try:
+                total = (self.mcq_count_var.get() * self.mcq_marks_var.get() +
+                         self.short_count_var.get() * self.short_marks_var.get() +
+                         self.long_count_var.get() * self.long_marks_var.get())
+                self.calc_label.config(text=f"📊 Calculated Total: {total} marks")
+            except: pass
+
+        for var in [self.mcq_count_var, self.mcq_marks_var, self.short_count_var,
+                    self.short_marks_var, self.long_count_var, self.long_marks_var]:
+            var.trace("w", update_calc)
+        update_calc()
+
+        # Difficulty ratio
+        diff_frame = tk.Frame(scroll_frame, bg=WHITE, padx=20, pady=15)
+        diff_frame.pack(fill="x", pady=5)
+        tk.Label(diff_frame, text="Difficulty Ratio", font=FONT_BOLD, bg=WHITE).pack(side="left", padx=(0, 10))
+        tk.Label(diff_frame, text="Easy%", font=FONT, bg=WHITE).pack(side="left")
         self.easy_var = tk.IntVar(value=40)
-        tk.Spinbox(ratio_frame, from_=0, to=100, textvariable=self.easy_var, font=FONT, bg=LIGHT, relief="flat", width=5).pack(side="left", padx=3)
-        tk.Label(ratio_frame, text="Med%", font=FONT, bg=WHITE).pack(side="left")
+        tk.Spinbox(diff_frame, from_=0, to=100, textvariable=self.easy_var, font=FONT, bg=LIGHT, relief="flat", width=5).pack(side="left", padx=3)
+        tk.Label(diff_frame, text="Med%", font=FONT, bg=WHITE).pack(side="left")
         self.med_var = tk.IntVar(value=40)
-        tk.Spinbox(ratio_frame, from_=0, to=100, textvariable=self.med_var, font=FONT, bg=LIGHT, relief="flat", width=5).pack(side="left", padx=3)
-        tk.Label(ratio_frame, text="Hard%", font=FONT, bg=WHITE).pack(side="left")
+        tk.Spinbox(diff_frame, from_=0, to=100, textvariable=self.med_var, font=FONT, bg=LIGHT, relief="flat", width=5).pack(side="left", padx=3)
+        tk.Label(diff_frame, text="Hard%", font=FONT, bg=WHITE).pack(side="left")
         self.hard_var = tk.IntVar(value=20)
-        tk.Spinbox(ratio_frame, from_=0, to=100, textvariable=self.hard_var, font=FONT, bg=LIGHT, relief="flat", width=5).pack(side="left", padx=3)
+        tk.Spinbox(diff_frame, from_=0, to=100, textvariable=self.hard_var, font=FONT, bg=LIGHT, relief="flat", width=5).pack(side="left", padx=3)
 
+        # Units
         units_frame = tk.Frame(scroll_frame, bg=WHITE, padx=20, pady=15)
         units_frame.pack(fill="x", pady=5)
         tk.Label(units_frame, text="Select Units to Cover", font=FONT_BOLD, bg=WHITE).pack(anchor="w")
@@ -500,7 +797,7 @@ class MainApp:
         self.subject_var.trace("w", refresh_units)
         refresh_units()
 
-        tk.Button(scroll_frame, text="⚡  GENERATE QUESTION PAPER", font=FONT_BOLD,
+        tk.Button(scroll_frame, text="🔍  PREVIEW & GENERATE", font=FONT_BOLD,
                   bg=ACCENT, fg=WHITE, relief="flat", pady=12, padx=30,
                   cursor="hand2", command=self.generate_paper).pack(pady=10)
 
@@ -510,29 +807,41 @@ class MainApp:
     def generate_paper(self):
         subject = self.subject_var.get()
         if not subject:
-            self.assistant.speak("Please select a subject.")
             messagebox.showerror("Error", "Please select a subject.")
             return
         selected_units = [u for u, v in self.unit_vars.items() if v.get()]
         if not selected_units:
-            self.assistant.speak("Please select at least one unit.")
             messagebox.showerror("Error", "Please select at least one unit.")
             return
 
         difficulty_ratio = {"Easy": self.easy_var.get(), "Medium": self.med_var.get(), "Hard": self.hard_var.get()}
-        questions = select_questions(subject, selected_units, difficulty_ratio,
-                                     self.mcq_count_var.get(), self.short_count_var.get(), self.long_count_var.get())
+
+        # FIX 1: Pass marks per type to engine
+        questions = select_questions(
+            subject, selected_units, difficulty_ratio,
+            self.mcq_count_var.get(), self.short_count_var.get(), self.long_count_var.get(),
+            mcq_marks=self.mcq_marks_var.get(),
+            short_marks=self.short_marks_var.get(),
+            long_marks=self.long_marks_var.get()
+        )
+
         if not questions:
-            self.assistant.speak("No questions found. Please generate questions using AI Generate first.")
             messagebox.showerror("Error", "No questions found. Use AI Generate to create questions first!")
             return
 
-        actual_marks, _ = validate_marks(questions, self.total_marks_var.get())
-        filename = f"QuestionPaper_{subject}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        save_path = filedialog.asksaveasfilename(defaultextension=".pdf",
-                                                  filetypes=[("PDF files", "*.pdf")],
-                                                  initialfile=filename)
-        if not save_path: return
+        # Marks validation warning
+        actual_marks = sum(q['marks'] for q in questions)
+        expected_marks = self.total_marks_var.get()
+        if actual_marks != expected_marks:
+            diff = actual_marks - expected_marks
+            direction = f"exceeds by {diff}" if diff > 0 else f"is short by {abs(diff)}"
+            msg = (f"Warning: Calculated marks ({actual_marks}) {direction} mark(s) "
+                   f"compared to your Total Marks setting ({expected_marks}).\n\n"
+                   f"This usually happens due to rounding in difficulty ratio.\n\n"
+                   f"Do you want to proceed with {actual_marks} marks?")
+            proceed = messagebox.askyesno("Marks Mismatch", msg)
+            if not proceed:
+                return
 
         config = {
             "college_name": self.college_var.get(),
@@ -543,25 +852,47 @@ class MainApp:
             "date": datetime.now().strftime("%d-%m-%Y"),
             "units": selected_units,
         }
+
+        # FIX 2: Show preview before generating PDF
+        self.assistant.speak(f"Preview ready. {len(questions)} questions selected. Review and click Generate PDF.")
+        PreviewWindow(self.root, questions, config, self.finalize_paper)
+
+    def finalize_paper(self, questions, config):
+        """Called after user confirms preview — saves PDF."""
+        filename = f"QuestionPaper_{config['subject']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        save_path = filedialog.asksaveasfilename(defaultextension=".pdf",
+                                                  filetypes=[("PDF files", "*.pdf")],
+                                                  initialfile=filename)
+        if not save_path:
+            return
+
         generate_pdf(save_path, config, questions)
 
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute('''INSERT INTO generated_papers (subject, exam_type, total_marks, duration, generated_on, filename)
                           VALUES (?, ?, ?, ?, ?, ?)''',
-                       (subject, config['exam_type'], actual_marks, config['duration'],
+                       (config['subject'], config['exam_type'], config['total_marks'], config['duration'],
                         datetime.now().strftime("%Y-%m-%d %H:%M:%S"), os.path.basename(save_path)))
         conn.commit()
         conn.close()
 
-        self.status_label.config(text=f"✅ Paper saved! Marks: {actual_marks}, Questions: {len(questions)}")
-        self.assistant.speak(f"Question paper generated successfully! {len(questions)} questions, {actual_marks} marks. Paper saved.")
+        self.status_label.config(text=f"✅ Paper saved! Marks: {config['total_marks']}, Questions: {len(questions)}")
+        # FIX 5: Detailed confirmation speak
+        mcq_c  = len([q for q in questions if q['question_type'] == 'MCQ'])
+        sht_c  = len([q for q in questions if q['question_type'] == 'Short'])
+        lng_c  = len([q for q in questions if q['question_type'] == 'Long'])
+        self.assistant.speak(
+            f"Question paper saved successfully! "
+            f"{mcq_c} multiple choice, {sht_c} short answer, and {lng_c} long answer questions. "
+            f"Total marks: {config['total_marks']}."
+        )
         messagebox.showinfo("Success", f"Question paper saved!\n{save_path}")
 
     # ── QUESTION BANK ────────────────────────────────────────
     def show_question_bank(self):
         self.clear_content()
-        self.page_title("Question Bank", "View and manage all questions")
+        self.page_title("Question Bank", "View, edit and manage all questions")
         self.assistant.speak("Question Bank. Showing all stored questions.")
 
         toolbar = tk.Frame(self.content, bg=BG)
@@ -578,10 +909,15 @@ class MainApp:
         filter_cb.pack(side="left", padx=5)
         filter_cb.bind("<<ComboboxSelected>>", lambda e: self.refresh_question_table())
 
+        # FIX 3: Edit button for all users
+        tk.Button(toolbar, text="✏️ Edit Selected", font=FONT, bg=ACCENT, fg=WHITE,
+                  relief="flat", padx=10, pady=5, cursor="hand2",
+                  command=self.edit_question).pack(side="left", padx=5)
+
         if self.user[3] == "admin":
             tk.Button(toolbar, text="🗑 Delete Selected", font=FONT, bg="#c0392b", fg=WHITE,
                       relief="flat", padx=10, pady=5, cursor="hand2",
-                      command=self.delete_question).pack(side="left", padx=10)
+                      command=self.delete_question).pack(side="left", padx=5)
 
         cols = ("ID", "Subject", "Unit", "Type", "Bloom's Level", "Difficulty", "Marks", "Question")
         tree_frame = tk.Frame(self.content, bg=BG)
@@ -594,6 +930,7 @@ class MainApp:
         self.q_tree.configure(yscrollcommand=scrollbar.set)
         self.q_tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+        self.q_tree.bind("<Double-Button-1>", lambda e: self.edit_question())  # Double click to edit
         self.refresh_question_table()
 
     def refresh_question_table(self):
@@ -609,7 +946,23 @@ class MainApp:
         conn.close()
         for row in rows:
             self.q_tree.insert("", "end", values=row)
-        self.assistant.speak(f"{len(rows)} questions found in the question bank.")
+
+    def edit_question(self):
+        """FIX 3: Open edit dialog for selected question."""
+        selected = self.q_tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Please select a question to edit.")
+            return
+        q_id = self.q_tree.item(selected[0])['values'][0]
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM questions WHERE id=?", (q_id,))
+        row = cursor.fetchone()
+        columns = [desc[0] for desc in cursor.description]
+        conn.close()
+        if row:
+            q_data = dict(zip(columns, row))
+            EditQuestionDialog(self.root, q_data, self.refresh_question_table)
 
     def delete_question(self):
         selected = self.q_tree.selection()
@@ -623,7 +976,13 @@ class MainApp:
             cursor.execute("DELETE FROM questions WHERE id=?", (q_id,))
             conn.commit()
             conn.close()
-            self.assistant.speak("Question deleted.")
+            # FIX 5: Confirmation with remaining count
+            conn2 = get_connection()
+            cur2 = conn2.cursor()
+            cur2.execute("SELECT COUNT(*) FROM questions")
+            remaining = cur2.fetchone()[0]
+            conn2.close()
+            self.assistant.speak(f"Question deleted. {remaining} questions remaining in the bank.")
             self.refresh_question_table()
 
     # ── HISTORY ─────────────────────────────────────────────
