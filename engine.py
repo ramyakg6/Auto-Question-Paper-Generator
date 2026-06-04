@@ -51,9 +51,9 @@ def select_questions(subject, units, difficulty_ratio, mcq_count, short_count, l
         return chosen
 
     def split_by_difficulty(count, ratio):
-        easy   = round(count * ratio.get("Easy", 0) / 100)
-        hard   = round(count * ratio.get("Hard", 0) / 100)
-        medium = count - easy - hard
+        easy   = int(count * ratio.get("Easy", 0) / 100)
+        hard   = int(count * ratio.get("Hard", 0) / 100)
+        medium = count - easy - hard  # medium absorbs the remainder, always sums to count
         return {"Easy": easy, "Medium": medium, "Hard": hard}
 
     for q_type, count in [("MCQ", mcq_count), ("Short", short_count), ("Long", long_count)]:
@@ -61,15 +61,21 @@ def select_questions(subject, units, difficulty_ratio, mcq_count, short_count, l
             continue
         split = split_by_difficulty(count, difficulty_ratio)
         type_selected = []
+
+        # Step 1: fetch per difficulty bucket
         for difficulty, d_count in split.items():
             if d_count > 0:
                 fetched = fetch_questions(q_type, difficulty, d_count)
                 type_selected.extend(fetched)
 
-        # Fallback if not enough questions found
+        # Step 2: if any bucket came up short, fill the gap with ANY remaining
+        # questions of this type (regardless of difficulty), so total always == count
         if len(type_selected) < count:
             remaining = count - len(type_selected)
             type_selected.extend(fill_remaining(q_type, remaining))
+
+        # Step 3: trim to exact count in case duplicates slipped through
+        type_selected = type_selected[:count]
 
         # Override marks with faculty-specified values
         for q in type_selected:

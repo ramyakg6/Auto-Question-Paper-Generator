@@ -337,7 +337,9 @@ class MainApp:
         self.root.geometry("980x700")
         self.root.configure(bg=BG)
         self.build_ui()
-        self.assistant.speak("Dashboard loaded. You can navigate using the sidebar or use voice commands.")
+        #self.assistant.speak("You can navigate using the sidebar or use voice commands.")
+        # Auto-start voice listening after greeting finishes
+        self.root.after(1500, self._auto_start_listening)
 
     def build_ui(self):
         sidebar = tk.Frame(self.root, bg=PRIMARY, width=210)
@@ -399,6 +401,18 @@ class MainApp:
         self.show_generate()
 
     # ── VOICE CONTROLS ───────────────────────────────────────
+    def _auto_start_listening(self):
+        """Auto-start voice listening on dashboard load."""
+        try:
+            import speech_recognition as sr  # noqa: F401
+            import pyaudio  # noqa: F401
+            self.toggle_listening()
+        except ImportError as e:
+            missing = "pyaudio" if "pyaudio" in str(e) else "SpeechRecognition"
+            print(f"[Voice] Cannot auto-start: {missing} not installed. "
+                  f"Run: pip install SpeechRecognition pyaudio")
+            self._update_voice_status(f"⚠ {missing} not installed")
+
     def toggle_listening(self):
         if not self.voice_listening:
             self.voice_listening = True
@@ -435,16 +449,20 @@ class MainApp:
     def _execute_command(self, action):
         if action == "nav_generate":
             self.assistant.speak("Opening Generate Paper.")
-            self.show_generate()
+            self.show_generate(announce=False)
+            self.assistant.speak("Configure settings then click Generate Question Paper.")
         elif action == "nav_ai":
             self.assistant.speak("Opening AI Generate.")
-            self.show_ai_generate()
+            self.show_ai_generate(announce=False)
+            self.assistant.speak("Upload your topic file, enter subject and unit, then click Generate with AI.")
         elif action == "nav_bank":
             self.assistant.speak("Opening Question Bank.")
-            self.show_question_bank()
+            self.show_question_bank(announce=False)
+            self.assistant.speak("Showing all stored questions.")
         elif action == "nav_history":
             self.assistant.speak("Opening History.")
-            self.show_history()
+            self.show_history(announce=False)
+            self.assistant.speak("Showing all previously generated question papers.")
         elif action == "action_generate":
             self.assistant.speak("Generating question paper.")
             try: self.generate_paper()
@@ -485,10 +503,11 @@ class MainApp:
         ttk.Separator(self.content, orient="horizontal").pack(fill="x", padx=20, pady=8)
 
     # ── AI GENERATE ──────────────────────────────────────────
-    def show_ai_generate(self):
+    def show_ai_generate(self, announce=True):
         self.clear_content()
         self.page_title("🤖 AI Question Generator", "Upload topic file → AI generates Bloom's Taxonomy questions")
-        self.assistant.speak("AI Generate screen. Upload your topic file, enter subject and unit, then click Generate with AI.")
+        if announce:
+            self.assistant.speak_interrupt("AI Generate screen. Upload your topic file, enter subject and unit, then click Generate with AI.")
 
         scroll = tk.Frame(self.content, bg=BG)
         scroll.pack(fill="both", expand=True, padx=20, pady=5)
@@ -659,14 +678,27 @@ class MainApp:
         threading.Thread(target=task, daemon=True).start()
 
     # ── GENERATE PAPER ───────────────────────────────────────
-    def show_generate(self):
+    def show_generate(self, announce=True):
         self.clear_content()
         self.page_title("Generate Question Paper", "Configure and auto-generate a balanced exam paper")
-        self.assistant.speak("Generate Paper screen. Configure settings then click Generate Question Paper.")
+        if announce:
+            self.assistant.speak_interrupt("Configure settings then click Generate Question Paper.")
 
-        scroll_frame = tk.Frame(self.content, bg=BG)
-        scroll_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        # Scrollable canvas wrapper
+        canvas = tk.Canvas(self.content, bg=BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.content, orient="vertical", command=canvas.yview)
+        scroll_frame = tk.Frame(canvas, bg=BG)
 
+        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True, padx=20, pady=10)
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT DISTINCT subject FROM questions")
@@ -712,6 +744,87 @@ class MainApp:
         self.duration_var = tk.IntVar(value=90)
         tk.Spinbox(fields_frame, from_=30, to=300, textvariable=self.duration_var,
                    font=FONT, bg=LIGHT, relief="flat", width=10).grid(row=2, column=3, sticky="w", pady=6)
+
+        # Question Bank Availability
+        avail_frame = tk.Frame(scroll_frame, bg=WHITE, padx=20, pady=15)
+        avail_frame.pack(fill="x", pady=5)
+        tk.Label(avail_frame, text="Question Bank Availability",
+                 font=FONT_BOLD, bg=WHITE).pack(anchor="w", pady=(0, 8))
+        self.avail_container = tk.Frame(avail_frame, bg=WHITE)
+        self.avail_container.pack(fill="x")
+
+        def get_question_stats(subject):
+            conn = get_connection()
+            cursor = conn.cursor()
+            rows = cursor.execute("""
+                SELECT unit, question_type, difficulty, COUNT(*) as cnt
+                FROM questions WHERE subject=?
+                GROUP BY unit, question_type, difficulty
+                ORDER BY unit, question_type
+            """, (subject,)).fetchall()
+            conn.close()
+            stats = {}
+            overall = {"MCQ": 0, "Short": 0, "Long": 0}
+            for unit, qtype, diff, cnt in rows:
+                if unit not in stats:
+                    stats[unit] = {"MCQ": 0, "Short": 0, "Long": 0, "diffs": {}}
+                if qtype in stats[unit]:
+                    stats[unit][qtype] += cnt
+                    stats[unit]["diffs"].setdefault(qtype, {})[diff[0]] = cnt
+                if qtype in overall:
+                    overall[qtype] += cnt
+            return stats, overall
+
+        def refresh_availability(*args):
+            for w in self.avail_container.winfo_children():
+                w.destroy()
+            subject = self.subject_var.get()
+            if not subject:
+                tk.Label(self.avail_container, text="Select a subject to see availability.",
+                         font=FONT, bg=WHITE, fg="#999").pack(anchor="w")
+                return
+            stats, overall = get_question_stats(subject)
+            if not stats:
+                tk.Label(self.avail_container,
+                         text="No questions found. Use AI Generate to populate the question bank.",
+                         font=FONT, bg=WHITE, fg="#c0392b").pack(anchor="w")
+                return
+            # Overall summary pills
+            summary = tk.Frame(self.avail_container, bg=WHITE)
+            summary.pack(fill="x", pady=(0, 8))
+            type_colors = {"MCQ": ("#1a6fa8", "#daedf9"),
+                           "Short": ("#1a7a3c", "#daf2e4"),
+                           "Long": ("#a85a1a", "#f9e8d8")}
+            total = sum(overall.values())
+            for qtype, (fg_col, bg_col) in type_colors.items():
+                tk.Label(summary, text=f"  {qtype}: {overall[qtype]}  ",
+                         font=("Segoe UI", 9, "bold"),
+                         bg=bg_col, fg=fg_col, relief="flat", padx=4, pady=3
+                         ).pack(side="left", padx=(0, 6))
+            tk.Label(summary, text=f"  Total: {total}  ",
+                     font=("Segoe UI", 9, "bold"),
+                     bg=LIGHT, fg="#0f1e35", relief="flat", padx=4, pady=3).pack(side="left")
+            # Per-unit rows
+            for unit, counts in stats.items():
+                row = tk.Frame(self.avail_container, bg="#faf8f4",
+                               highlightbackground="#e0ddd8", highlightthickness=1)
+                row.pack(fill="x", pady=2, ipady=5)
+                tk.Label(row, text=unit,
+                         font=("Segoe UI", 9, "bold"),
+                         bg="#faf8f4", fg="#0f1e35").pack(side="left", padx=(10, 14))
+                for qtype, (fg_col, bg_col) in type_colors.items():
+                    n = counts[qtype]
+                    diffs = counts["diffs"].get(qtype, {})
+                    diff_str = "  ".join(f"{k}:{v}" for k, v in sorted(diffs.items())) if diffs else ""
+                    label_text = f"{qtype}: {n}" + (f"  ({diff_str})" if diff_str else "")
+                    pill_fg = fg_col if n > 0 else "#aaa"
+                    pill_bg = bg_col if n > 0 else "#f0f0f0"
+                    tk.Label(row, text=f"  {label_text}  ",
+                             font=("Segoe UI", 9), bg=pill_bg, fg=pill_fg,
+                             relief="flat", padx=3, pady=2).pack(side="left", padx=(0, 6))
+
+        self.subject_var.trace("w", refresh_availability)
+        refresh_availability()
 
         # ── FIX 1: Marks per question type ──────────────────
         marks_frame = tk.Frame(scroll_frame, bg=WHITE, padx=20, pady=15)
@@ -794,15 +907,15 @@ class MainApp:
                 tk.Checkbutton(self.units_container, text=u, variable=var,
                                font=FONT, bg=WHITE).pack(side="left", padx=10)
 
+
         self.subject_var.trace("w", refresh_units)
         refresh_units()
 
-        tk.Button(scroll_frame, text="🔍  PREVIEW & GENERATE", font=FONT_BOLD,
-                  bg=ACCENT, fg=WHITE, relief="flat", pady=12, padx=30,
-                  cursor="hand2", command=self.generate_paper).pack(pady=10)
-
+        tk.Button(scroll_frame, text="\U0001f50d  PREVIEW & GENERATE", font=FONT_BOLD,
+                  bg=ACCENT, fg=WHITE, relief="flat", pady=14,
+                  cursor="hand2", command=self.generate_paper).pack(fill="x", pady=10)
         self.status_label = tk.Label(scroll_frame, text="", font=FONT, bg=BG, fg="green")
-        self.status_label.pack()
+        self.status_label.pack(pady=(0, 10))
 
     def generate_paper(self):
         subject = self.subject_var.get()
@@ -833,15 +946,30 @@ class MainApp:
         actual_marks = sum(q['marks'] for q in questions)
         expected_marks = self.total_marks_var.get()
         if actual_marks != expected_marks:
-            diff = actual_marks - expected_marks
-            direction = f"exceeds by {diff}" if diff > 0 else f"is short by {abs(diff)}"
-            msg = (f"Warning: Calculated marks ({actual_marks}) {direction} mark(s) "
-                   f"compared to your Total Marks setting ({expected_marks}).\n\n"
-                   f"This usually happens due to rounding in difficulty ratio.\n\n"
-                   f"Do you want to proceed with {actual_marks} marks?")
-            proceed = messagebox.askyesno("Marks Mismatch", msg)
-            if not proceed:
+            diff = abs(actual_marks - expected_marks)
+            # Check if question counts also don't match (DB shortage)
+            expected_q_count = (self.mcq_count_var.get() +
+                                self.short_count_var.get() +
+                                self.long_count_var.get())
+            actual_q_count = len(questions)
+            if actual_q_count < expected_q_count:
+                messagebox.showerror(
+                    "Not Enough Questions",
+                    f"Only {actual_q_count} of {expected_q_count} questions could be found in the database "
+                    f"for the selected subject, units, and difficulty ratio.\n\n"
+                    f"Calculated marks: {actual_marks} (expected: {expected_marks}).\n\n"
+                    f"Please add more questions via AI Generate, or adjust the counts/units."
+                )
                 return
+            else:
+                direction = f"exceeds by {diff}" if actual_marks > expected_marks else f"is short by {diff}"
+                msg = (f"Warning: Calculated marks ({actual_marks}) {direction} mark(s) "
+                       f"compared to your Total Marks setting ({expected_marks}).\n\n"
+                       f"This usually happens due to rounding in difficulty ratio.\n\n"
+                       f"Do you want to proceed with {actual_marks} marks?")
+                proceed = messagebox.askyesno("Marks Mismatch", msg)
+                if not proceed:
+                    return
 
         config = {
             "college_name": self.college_var.get(),
@@ -890,10 +1018,11 @@ class MainApp:
         messagebox.showinfo("Success", f"Question paper saved!\n{save_path}")
 
     # ── QUESTION BANK ────────────────────────────────────────
-    def show_question_bank(self):
+    def show_question_bank(self, announce=True):
         self.clear_content()
         self.page_title("Question Bank", "View, edit and manage all questions")
-        self.assistant.speak("Question Bank. Showing all stored questions.")
+        if announce:
+            self.assistant.speak_interrupt("Question Bank. Showing all stored questions.")
 
         toolbar = tk.Frame(self.content, bg=BG)
         toolbar.pack(fill="x", padx=20, pady=5)
@@ -986,10 +1115,11 @@ class MainApp:
             self.refresh_question_table()
 
     # ── HISTORY ─────────────────────────────────────────────
-    def show_history(self):
+    def show_history(self, announce=True):
         self.clear_content()
         self.page_title("Generated Papers History")
-        self.assistant.speak("History screen. Showing all previously generated question papers.")
+        if announce:
+            self.assistant.speak_interrupt("History screen. Showing all previously generated question papers.")
         cols = ("ID", "Subject", "Exam Type", "Total Marks", "Duration", "Generated On", "Filename")
         frame = tk.Frame(self.content, bg=BG)
         frame.pack(fill="both", expand=True, padx=20, pady=10)
