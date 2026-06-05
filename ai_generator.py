@@ -258,3 +258,77 @@ def save_ai_questions_to_db(questions, conn):
 def blooms_to_difficulty(level):
     return {"Remember": "Easy", "Understand": "Easy", "Apply": "Medium",
             "Analyze": "Medium", "Evaluate": "Hard", "Create": "Hard"}.get(level, "Medium")
+
+def generate_answers_for_questions(questions, subject, api_key):
+    """
+    For each Short/Long question that has no stored answer,
+    calls Groq AI to generate a concise model answer.
+    Returns a dict: {question_text -> generated_answer_string}
+    """
+    if not api_key:
+        return {}
+
+    # Filter only short/long with no answer
+    to_answer = [
+        q for q in questions
+        if q.get("question_type") in ("Short", "Long")
+        and not (q.get("answer") or "").strip()
+    ]
+    if not to_answer:
+        return {}
+
+    client = Groq(api_key=api_key)
+
+    # Build a numbered list of questions for the prompt
+    q_lines = "\n".join(
+        f"{i+1}. [{q['question_type']}] {q['question_text']}"
+        for i, q in enumerate(to_answer)
+    )
+
+    prompt = f"""You are an expert university professor writing a marking/answer scheme.
+
+Subject: {subject}
+
+For each question below, write a concise model answer suitable for an examiner's answer key.
+- Short Answer: 3-5 sentences covering key points (4 marks each).
+- Long Answer: 8-12 sentences with structured explanation, key concepts, examples (7-10 marks each).
+
+Return ONLY a valid JSON array with one object per question in the same order, like:
+[
+  {{"answer": "Model answer text here..."}},
+  {{"answer": "Model answer text here..."}}
+]
+
+No markdown, no code blocks, no extra text. Just raw JSON.
+
+Questions:
+{q_lines}"""
+
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "You are a university professor writing concise model answers for an answer key. Return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=4000,
+            temperature=0.3
+        )
+        raw = response.choices[0].message.content.strip()
+        raw = re.sub(r"```json|```", "", raw).strip()
+        start = raw.find("[")
+        end   = raw.rfind("]") + 1
+        if start != -1 and end > start:
+            raw = raw[start:end]
+
+        answers = json.loads(raw)
+        result = {}
+        for i, q in enumerate(to_answer):
+            if i < len(answers):
+                result[q["question_text"]] = answers[i].get("answer", "").strip()
+        print(f"[AI] Generated answers for {len(result)} short/long questions.")
+        return result
+
+    except Exception as e:
+        print(f"[AI] Answer generation error: {e}")
+        return {}

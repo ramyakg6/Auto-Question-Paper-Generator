@@ -7,7 +7,7 @@ from datetime import datetime
 
 from database import initialize_db, seed_sample_questions, get_connection
 from engine import select_questions, validate_marks
-from pdf_generator import generate_pdf
+from pdf_generator import generate_pdf, generate_answer_key_pdf
 from ai_generator import extract_text_from_file, generate_questions_with_ai, save_ai_questions_to_db
 from voice_assistant import VoiceAssistant, VoiceCommandListener, speak
 
@@ -911,6 +911,33 @@ class MainApp:
         self.subject_var.trace("w", refresh_units)
         refresh_units()
 
+        # Answer Key option
+        ans_key_frame = tk.Frame(scroll_frame, bg=WHITE, padx=20, pady=12)
+        ans_key_frame.pack(fill="x", pady=5)
+        self.answer_key_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            ans_key_frame,
+            text="📋  Also generate Answer Key / Answer Schema PDF  (separate file, confidential)",
+            variable=self.answer_key_var,
+            font=FONT_BOLD, bg=WHITE, fg=PRIMARY,
+            selectcolor=WHITE, activebackground=WHITE, cursor="hand2"
+        ).pack(anchor="w")
+        tk.Label(
+            ans_key_frame,
+            text="  Includes correct answers for MCQs (highlighted), AI-generated model answers for "
+                 "Short/Long questions, a quick-reference MCQ table, and Bloom's level tags.",
+            font=("Segoe UI", 9), bg=WHITE, fg="#666", wraplength=700, justify="left"
+        ).pack(anchor="w", pady=(2, 0))
+
+        # Groq API key for AI answer generation
+        api_row = tk.Frame(ans_key_frame, bg=WHITE)
+        api_row.pack(fill="x", pady=(8, 0))
+        tk.Label(api_row, text="Groq API Key (for AI answers):", font=FONT_BOLD, bg=WHITE).pack(side="left")
+        self.ans_key_api_var = tk.StringVar()
+        tk.Entry(api_row, textvariable=self.ans_key_api_var, font=FONT, bg=LIGHT,
+                 relief="flat", show="*", width=45).pack(side="left", padx=(8, 0), ipady=4)
+        tk.Label(api_row, text="  gsk_...", font=("Segoe UI", 8), bg=WHITE, fg="#999").pack(side="left")
+
         tk.Button(scroll_frame, text="\U0001f50d  PREVIEW & GENERATE", font=FONT_BOLD,
                   bg=ACCENT, fg=WHITE, relief="flat", pady=14,
                   cursor="hand2", command=self.generate_paper).pack(fill="x", pady=10)
@@ -979,6 +1006,7 @@ class MainApp:
             "duration": self.duration_var.get(),
             "date": datetime.now().strftime("%d-%m-%Y"),
             "units": selected_units,
+            "generate_answer_key": getattr(self, "answer_key_var", None) and self.answer_key_var.get(),
         }
 
         # FIX 2: Show preview before generating PDF
@@ -986,7 +1014,7 @@ class MainApp:
         PreviewWindow(self.root, questions, config, self.finalize_paper)
 
     def finalize_paper(self, questions, config):
-        """Called after user confirms preview — saves PDF."""
+        """Called after user confirms preview — saves PDF and optionally the answer key."""
         filename = f"QuestionPaper_{config['subject']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
         save_path = filedialog.asksaveasfilename(defaultextension=".pdf",
                                                   filetypes=[("PDF files", "*.pdf")],
@@ -1006,16 +1034,43 @@ class MainApp:
         conn.close()
 
         self.status_label.config(text=f"✅ Paper saved! Marks: {config['total_marks']}, Questions: {len(questions)}")
-        # FIX 5: Detailed confirmation speak
         mcq_c  = len([q for q in questions if q['question_type'] == 'MCQ'])
         sht_c  = len([q for q in questions if q['question_type'] == 'Short'])
         lng_c  = len([q for q in questions if q['question_type'] == 'Long'])
+
+        # ── ANSWER KEY PDF ─────────────────────────────────
+        ans_key_path = None
+        if config.get("generate_answer_key"):
+            base, ext = os.path.splitext(save_path)
+            ak_default = os.path.basename(f"{base}_AnswerKey{ext}")
+            ak_save = filedialog.asksaveasfilename(
+                defaultextension=".pdf",
+                filetypes=[("PDF files", "*.pdf")],
+                initialfile=ak_default,
+                title="Save Answer Key PDF As…"
+            )
+            if ak_save:
+                ak_api_key = getattr(self, "ans_key_api_var", None) and self.ans_key_api_var.get().strip()
+                generate_answer_key_pdf(ak_save, config, questions, api_key=ak_api_key or None)
+                ans_key_path = ak_save
+                self.status_label.config(
+                    text=f"✅ Paper + Answer Key saved! Marks: {config['total_marks']}, Questions: {len(questions)}"
+                )
+
         self.assistant.speak(
             f"Question paper saved successfully! "
             f"{mcq_c} multiple choice, {sht_c} short answer, and {lng_c} long answer questions. "
             f"Total marks: {config['total_marks']}."
+            + (" Answer key also saved." if ans_key_path else "")
         )
-        messagebox.showinfo("Success", f"Question paper saved!\n{save_path}")
+
+        if ans_key_path:
+            messagebox.showinfo(
+                "Success",
+                f"Question paper saved!\n{save_path}\n\nAnswer Key saved!\n{ans_key_path}"
+            )
+        else:
+            messagebox.showinfo("Success", f"Question paper saved!\n{save_path}")
 
     # ── QUESTION BANK ────────────────────────────────────────
     def show_question_bank(self, announce=True):
@@ -1140,7 +1195,7 @@ class MainApp:
             tree.insert("", "end", values=row)
 
     def logout(self):
-        self.assistant.speak("Logging out. Goodbye!")
+        self.assistant.speak("Logging out . Goodbye.!")
         self.root.destroy()
         login_root = tk.Tk()
         LoginWindow(login_root)
